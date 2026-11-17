@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import StatCard from './StatCard.vue'
+import StatCard from '../../../shared/components/StatCard.vue'
 import { analyze } from '../services/analysis'
 import type { CollatzResult } from '../types/collatz'
 import { formatInt, groupDigits, shortBig } from '../utils/format'

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import StatCard from './StatCard.vue'
+import StatCard from '../../../shared/components/StatCard.vue'
 import StepsHistogram from './StepsHistogram.vue'
 import type { useExplorer } from '../composables/useExplorer'
 import { EXPLORE_MAX_SIZE } from '../services/explorer'

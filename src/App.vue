@@ -1,142 +1,41 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
-import AppHeader from './components/AppHeader.vue'
-import TabNav, { type Tab } from './components/TabNav.vue'
-import InputPanel from './components/InputPanel.vue'
-import StatsPanel from './components/StatsPanel.vue'
-import CharacteristicsPanel from './components/CharacteristicsPanel.vue'
-import SequenceChart from './components/SequenceChart.vue'
-import LiveLab from './components/LiveLab.vue'
-import StepsTable from './components/StepsTable.vue'
-import HistoryPanel from './components/HistoryPanel.vue'
-import ComparatorView from './components/ComparatorView.vue'
-import ExplorerView from './components/ExplorerView.vue'
-import AboutSection from './components/AboutSection.vue'
-import { useCollatz } from './composables/useCollatz'
-import { useAnimation } from './composables/useAnimation'
-import { useHistory } from './composables/useHistory'
-import { useComparator } from './composables/useComparator'
-import { useExplorer } from './composables/useExplorer'
-import type { HistoryEntry } from './types/collatz'
+import { computed, defineAsyncComponent, watchEffect } from 'vue'
+import HomeView from './app/HomeView.vue'
+import { useHashRoute } from './app/useHashRoute'
+import { findLab, LABS } from './labs'
 
-const tabs: Tab[] = [
-  { id: 'lab', label: '🧪 Laboratório', hint: 'Acompanhe cada operação acontecendo' },
-  { id: 'compare', label: '⚖️ Comparador', hint: 'Dois números lado a lado' },
-  { id: 'explore', label: '🔭 Explorador', hint: 'Quem exige mais etapas num intervalo' },
-  { id: 'about', label: '📖 Sobre', hint: 'A conjectura' },
-]
-const initial = location.hash.slice(1)
-const tab = ref(tabs.some((t) => t.id === initial) ? initial : 'lab')
-watch(tab, (t) => history.replaceState(null, '', `#${t}`))
+const { route, openLab, setTab } = useHashRoute()
+const lab = computed(() => findLab(route.value.lab))
 
-const calc = useCollatz()
-const hist = useHistory()
-const cmp = useComparator()
-const ex = useExplorer()
-const sequence = computed(() => calc.result.value?.sequence ?? [])
-const anim = useAnimation(computed(() => sequence.value.length))
+// Cada laboratório é carregado sob demanda (um bundle por laboratório).
+const components = Object.fromEntries(LABS.map((l) => [l.id, defineAsyncComponent(l.load)]))
 
-/** Sequências curtas são animadas automaticamente para o usuário acompanhar as operações. */
-const AUTOPLAY_MAX_STEPS = 400
-
-async function run() {
-  anim.reset()
-  const r = await calc.run()
-  if (!r) return
-  hist.record(r)
-  if (r.stats.steps > 0 && r.stats.steps <= AUTOPLAY_MAX_STEPS) anim.play()
-}
-
-async function openNumber(n: string) {
-  tab.value = 'lab'
-  calc.input.value = n
-  window.scrollTo({ top: 0, behavior: 'smooth' })
-  await run()
-}
-
-async function openEntry(e: HistoryEntry) {
-  calc.limit.value = e.limit
-  await openNumber(e.start)
-}
-
-function comparePair(a: string, b: string) {
-  tab.value = 'compare'
-  window.scrollTo({ top: 0, behavior: 'smooth' })
-  cmp.setPair(a, b)
-}
-
-function clear() {
-  anim.reset()
-  calc.clear()
-}
-
-onMounted(() => {
-  run()
-  cmp.run()
+watchEffect(() => {
+  document.title = lab.value ? `${lab.value.title} · Laboratórios Matemáticos` : 'Laboratórios Matemáticos'
 })
+
+function onSwitch(e: Event) {
+  const id = (e.target as HTMLSelectElement).value
+  if (id) openLab(id)
+  else location.hash = '#/'
+}
 </script>
 
 <template>
-  <AppHeader />
-  <TabNav v-model="tab" :tabs="tabs" />
+  <template v-if="lab">
+    <div class="border-b border-slate-800 bg-slate-950">
+      <div class="mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-2 text-sm">
+        <a href="#/" class="font-medium text-slate-400 transition hover:text-slate-100">← Laboratórios</a>
+        <label class="flex items-center gap-2 text-slate-500">
+          <span class="hidden sm:inline">Ir para</span>
+          <select class="field !w-auto !py-1 text-sm" :value="lab.id" aria-label="Trocar de laboratório" @change="onSwitch">
+            <option v-for="l in LABS" :key="l.id" :value="l.id">{{ l.icon }} {{ l.title }}</option>
+          </select>
+        </label>
+      </div>
+    </div>
+    <component :is="components[lab.id]" :key="lab.id" :tab="route.tab" @update:tab="setTab" />
+  </template>
 
-  <main class="mx-auto grid max-w-7xl gap-5 px-4 py-6">
-    <template v-if="tab === 'lab'">
-      <InputPanel
-        v-model:input="calc.input.value"
-        v-model:limit="calc.limit.value"
-        :running="calc.running.value"
-        :progress="calc.progress.value"
-        :error="calc.error.value"
-        @run="run"
-        @cancel="calc.cancel"
-        @clear="clear"
-      />
-
-      <template v-if="calc.result.value">
-        <LiveLab :anim="anim" :sequence="sequence" />
-
-        <section class="panel">
-          <h2 class="panel-title">Gráfico da sequência</h2>
-          <SequenceChart
-            :sequence="sequence"
-            :max-index="calc.result.value.stats.maxIndex"
-            :converged="calc.result.value.status === 'converged'"
-            :current="anim.current.value"
-            @pick="anim.goTo"
-          />
-        </section>
-      </template>
-
-      <StatsPanel :result="calc.result.value" :status="calc.status.value" :progress="calc.progress.value" />
-
-      <template v-if="calc.result.value">
-        <CharacteristicsPanel :result="calc.result.value" />
-        <StepsTable
-          :sequence="sequence"
-          :current="anim.current.value"
-          :max-index="calc.result.value.stats.maxIndex"
-          @pick="anim.goTo"
-        />
-      </template>
-
-      <HistoryPanel
-        :entries="hist.entries.value"
-        :busy="calc.running.value"
-        @open="openEntry"
-        @remove="hist.remove"
-        @clear-all="hist.clearAll"
-      />
-    </template>
-
-    <ComparatorView v-else-if="tab === 'compare'" :cmp="cmp" @open="openNumber" />
-
-    <ExplorerView v-else-if="tab === 'explore'" :ex="ex" @open="openNumber" @compare="comparePair" />
-
-    <AboutSection v-else />
-  </main>
-
-  <footer class="py-8 text-center text-xs text-slate-600">
-    Todo o processamento acontece no seu navegador · aritmética exata com BigInt
-  </footer>
+  <HomeView v-else @open="openLab" />
 </template>
